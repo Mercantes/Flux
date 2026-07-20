@@ -155,7 +155,7 @@ export function LeadTimelineTab({ timeline }: LeadTimelineTabProps) {
                 </div>
                 {entry.message_content ? (
                   <div
-                    className="mt-1 whitespace-pre-line text-xs text-[var(--muted-foreground)] dark:text-[var(--foreground)] [&_a]:text-[var(--primary)] [&_a]:underline"
+                    className="mt-1 whitespace-pre-line break-words [overflow-wrap:anywhere] text-xs text-[var(--muted-foreground)] dark:text-[var(--foreground)] [&_a]:text-[var(--primary)] [&_a]:underline"
                     dangerouslySetInnerHTML={{
                       __html: sanitizeHtml(
                         entry.message_content
