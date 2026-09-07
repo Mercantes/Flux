@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import type { DailyDataPoint } from '../types';
-import { buildMeetingsByDay, diffCumulative, linearTrend } from './meetings-by-day';
+import {
+  buildMeetingsByDay,
+  diffCumulative,
+  linearTrend,
+  operatingDaysMask,
+} from './meetings-by-day';
 
 function series(actuals: Array<number | null>, month = '2026-09'): DailyDataPoint[] {
   return actuals.map((actual, i) => ({
@@ -58,6 +63,49 @@ describe('linearTrend', () => {
     const trend = linearTrend([10, 4, 0, 0, 0]) as number[];
     for (const v of trend) expect(v).toBeGreaterThanOrEqual(0);
   });
+
+  it('ajusta só nos índices marcados, mas desenha em todos os dias ocorridos', () => {
+    // Os zeros dos índices 3 e 4 saem do ajuste: a reta continua plana em 3.
+    const trend = linearTrend([3, 3, 3, 0, 0], [true, true, true, false, false]) as number[];
+    expect(trend).toEqual([3, 3, 3, 3, 3]);
+  });
+
+  it('sem a máscara os mesmos zeros derrubam a reta', () => {
+    const trend = linearTrend([3, 3, 3, 0, 0]) as number[];
+    expect(trend[4] ?? 0).toBeLessThan(trend[0] ?? 0);
+  });
+
+  it('ignora a máscara quando ela deixa menos de 2 pontos', () => {
+    const trend = linearTrend([1, 2, 3], [true, false, false]);
+    expect(trend).toEqual([1, 2, 3]);
+  });
+});
+
+describe('operatingDaysMask', () => {
+  // Setembro/2026: 01 = terça … 04 = sexta, 05 = sábado, 06 = domingo, 07 = segunda.
+  const days = [1, 2, 3, 4, 5, 6, 7];
+
+  it('exclui fim de semana mesmo com movimento', () => {
+    const mask = operatingDaysMask([1, 1, 1, 1, 2, 2, 1], [1, 1, 1, 1, 1, 1, 1], days, '2026-09');
+    expect(mask[4]).toBe(false);
+    expect(mask[5]).toBe(false);
+  });
+
+  it('exclui dia útil com 0 RM e 0 RR (feriado/parada)', () => {
+    const mask = operatingDaysMask([4, 9, 4, 5, 0, 0, 0], [3, 3, 3, 2, 0, 0, 0], days, '2026-09');
+    expect(mask.slice(0, 4)).toEqual([true, true, true, true]);
+    expect(mask[6]).toBe(false);
+  });
+
+  it('mantém dia útil que teve só RR', () => {
+    const mask = operatingDaysMask([0], [2], [1], '2026-09');
+    expect(mask[0]).toBe(true);
+  });
+
+  it('dia futuro (null) fica de fora', () => {
+    const mask = operatingDaysMask([null], [null], [1], '2026-09');
+    expect(mask[0]).toBe(false);
+  });
 });
 
 describe('buildMeetingsByDay', () => {
@@ -103,5 +151,17 @@ describe('buildMeetingsByDay', () => {
 
   it('séries vazias devolvem vazio', () => {
     expect(buildMeetingsByDay([], [], '2026-09')).toEqual([]);
+  });
+
+  it('fim de semana e feriado zerados não derrubam a tendência', () => {
+    // Cenário real de 01–07/09/2026: operação de ter a sex, depois sáb, dom e
+    // o feriado de 07/09 zerados. A reta não pode despencar até o eixo.
+    const points = buildMeetingsByDay(
+      series([4, 13, 17, 22, 22, 22, 22]),
+      series([3, 6, 9, 11, 11, 11, 11]),
+      '2026-09',
+    );
+    expect(points[6]?.trendScheduled ?? 0).toBeGreaterThan(0);
+    expect(points[6]?.trendHeld ?? 0).toBeGreaterThan(0);
   });
 });
