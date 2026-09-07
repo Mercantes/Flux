@@ -212,6 +212,11 @@ export async function updateLead(
       // Skip complex object fields (phones, socios, emails) from the message — they're in metadata
       const skipFields = new Set(['phones', 'socios', 'emails']);
       const changeDescriptions: string[] = [];
+      // Keep the timeline event compact: long values (BANT text, ad-library
+      // URLs, etc.) are truncated here — the full before/after lives in
+      // metadata.changes and is shown in the lead audit tab.
+      const truncate = (s: string, max = 80): string =>
+        s.length > max ? `${s.slice(0, max).trimEnd()}…` : s;
       for (const [key, change] of Object.entries(changes)) {
         if (skipFields.has(key)) continue;
         const oldVal = change.from;
@@ -232,7 +237,7 @@ export async function updateLead(
               const oldStr = String(fromObj[fieldId] ?? '').trim() || '(vazio)';
               const newStr = String(toObj[fieldId] ?? '').trim() || '(vazio)';
               if (oldStr !== newStr) {
-                changeDescriptions.push(`${fieldName}: ${oldStr} → ${newStr}`);
+                changeDescriptions.push(`${fieldName}: ${truncate(oldStr)} → ${truncate(newStr)}`);
               }
             }
           }
@@ -256,7 +261,7 @@ export async function updateLead(
           }
         }
 
-        changeDescriptions.push(`${label}: ${fromStr} → ${toStr}`);
+        changeDescriptions.push(`${label}: ${truncate(fromStr)} → ${truncate(toStr)}`);
       }
       logLeadEvent(supabase, {
         orgId,
