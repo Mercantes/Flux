@@ -38,16 +38,31 @@ export function diffCumulative(series: DailyDataPoint[]): Array<number | null> {
  * Regressão linear (mínimos quadrados) sobre os índices com valor não-nulo.
  * Devolve o valor da reta em cada índice não-nulo (clampado em >= 0) e `null`
  * onde a entrada é `null`. Com menos de 2 pontos não há reta: tudo `null`.
+ *
+ * `includeInFit` restringe QUAIS índices entram no ajuste (ver
+ * `operatingDaysMask`) — a reta continua sendo desenhada em todos os dias já
+ * ocorridos, pra linha não ficar picotada. Se a máscara deixar menos de 2
+ * pontos, ela é ignorada e o ajuste usa todos os dias com valor.
  */
-export function linearTrend(values: Array<number | null>): Array<number | null> {
-  const xs: number[] = [];
-  const ys: number[] = [];
-  values.forEach((v, i) => {
-    if (v !== null) {
+export function linearTrend(
+  values: Array<number | null>,
+  includeInFit?: Array<boolean>,
+): Array<number | null> {
+  const collect = (useMask: boolean) => {
+    const xs: number[] = [];
+    const ys: number[] = [];
+    values.forEach((v, i) => {
+      if (v === null) return;
+      if (useMask && includeInFit && !includeInFit[i]) return;
       xs.push(i);
       ys.push(v);
-    }
-  });
+    });
+    return { xs, ys };
+  };
+
+  let { xs, ys } = collect(true);
+  if (xs.length < 2 && includeInFit) ({ xs, ys } = collect(false));
+
   const n = xs.length;
   if (n < 2) return values.map(() => null);
 
@@ -70,6 +85,38 @@ export function linearTrend(values: Array<number | null>): Array<number | null> 
   });
 }
 
+/** Sábado ou domingo, na régua BRT (o `day` já vem do recorte BRT). */
+function isWeekend(month: string, day: number): boolean {
+  const year = Number(month.slice(0, 4));
+  const mon = Number(month.slice(5, 7));
+  if (!Number.isFinite(year) || !Number.isFinite(mon)) return false;
+  const dow = new Date(Date.UTC(year, mon - 1, day)).getUTCDay();
+  return dow === 0 || dow === 6;
+}
+
+/**
+ * Marca quais dias entram no ajuste da tendência — só os "dias de operação".
+ * Ficam de fora:
+ *   - sábado e domingo;
+ *   - dia útil sem nenhum movimento (0 RM e 0 RR): feriado, parada, sistema
+ *     fora. Contar esses zeros derrubava a reta artificialmente.
+ * Dia futuro (`null`) já não entra por não ter valor.
+ */
+export function operatingDaysMask(
+  scheduled: Array<number | null>,
+  held: Array<number | null>,
+  days: number[],
+  month: string,
+): boolean[] {
+  return days.map((day, i) => {
+    if (isWeekend(month, day)) return false;
+    const rm = scheduled[i] ?? null;
+    const rr = held[i] ?? null;
+    if (rm === null && rr === null) return false;
+    return (rm ?? 0) > 0 || (rr ?? 0) > 0;
+  });
+}
+
 /**
  * Monta a série do gráfico a partir das séries acumuladas que os cards KPI
  * "Reuniões marcadas" e "Reuniões realizadas" já recebem. Assim a soma das
@@ -86,13 +133,18 @@ export function buildMeetingsByDay(
 
   const scheduledByDay = diffCumulative(scheduled.slice(0, len));
   const heldByDay = diffCumulative(held.slice(0, len));
-  const trendScheduled = linearTrend(scheduledByDay);
-  const trendHeld = linearTrend(heldByDay);
+
+  const days: number[] = [];
+  for (let i = 0; i < len; i++) days.push(scheduled[i]?.day ?? i + 1);
+
+  const mask = operatingDaysMask(scheduledByDay, heldByDay, days, month);
+  const trendScheduled = linearTrend(scheduledByDay, mask);
+  const trendHeld = linearTrend(heldByDay, mask);
 
   const mon = month.slice(5, 7);
   const points: MeetingsByDayPoint[] = [];
   for (let i = 0; i < len; i++) {
-    const day = scheduled[i]?.day ?? i + 1;
+    const day = days[i] ?? i + 1;
     points.push({
       day,
       label: `${String(day).padStart(2, '0')}/${mon}`,

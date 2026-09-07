@@ -37,7 +37,7 @@ const HELP =
   'Quantas reuniões foram marcadas e quantas foram realizadas em cada dia do período.\n\n' +
   '• RM: dia em que o SDR marcou a reunião (meeting_scheduled_at).\n' +
   '• RR: dia em que o lead virou Ganho (reunião confirmada como realizada). Some da barra se o closer marcar no-show depois.\n' +
-  '• Tendência: reta ajustada (regressão linear) sobre os dias já ocorridos.\n\n' +
+  '• Tendência: reta ajustada (regressão linear) sobre os dias de operação já ocorridos — fins de semana e dias sem nenhum movimento (feriado, parada) ficam de fora do cálculo.\n\n' +
   'Segue o mesmo filtro dos cards acima; a soma das barras bate com o número grande de cada card.';
 
 interface MeetingsByDayChartProps {
